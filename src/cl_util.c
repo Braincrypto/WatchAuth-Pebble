@@ -32,36 +32,6 @@ TextLayer* cl_text_layer_create(GRect location, GColor colour, GColor background
 }
 
 /*
- * Internal _in_dropped() handler because it rarely does anything else
- */
-static void in_dropped_handler(AppMessageResult reason, void *context) 
-{ 
-	if(DEBUG == true)
-	{
-		cl_interpret_message_result(reason);
-	}
-}
-
-/*
- * Out failed handler
- */
-static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, void *context) 
-{
-  if(DEBUG == true)
-  {
-    cl_interpret_message_result(reason);
-  }
-}
-
-/*
- * Internal Animation disposal
- */
-static void on_animation_stopped(Animation *anim, bool finished, void *context)
-{
-  property_animation_destroy((PropertyAnimation*) anim);
-}
-
-/*
  * Convenience app_log shortcut
  */
 void cl_applog(char* message)
