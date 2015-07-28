@@ -3,12 +3,19 @@
 
 #define KEY_START 0
 
+#define SAMPLE_BUFFER_CAPACITY 50
 #define NUM_SAMPLES 10
 
 static Window *window;
 static TextLayer *x_layer, *y_layer, *z_layer;
-static int16_t latest_data[3 * NUM_SAMPLES];
-static uint64_t latest_timestamps[NUM_SAMPLES];
+static AccelData latest_data[NUM_SAMPLES];
+static int latest_samples;
+static int subscribed = 0;
+
+static void debug_log(char *message)
+{
+  APP_LOG(APP_LOG_LEVEL_DEBUG, message); 
+}
 
 static void window_load(Window *window)
 {
@@ -32,18 +39,16 @@ static void window_unload(Window *window)
 
 static void accel_new_data(AccelData *data, uint32_t num_samples)
 {
-  for(uint32_t i = 0; i < num_samples; i++)
-  {
-    latest_timestamps[i] = data[i].timestamp;
-    latest_data[(i * 3) + 0] = data[i].x;
-    latest_data[(i * 3) + 1] = data[i].y;
-    latest_data[(i * 3) + 2] = data[i].z;
+  if(latest_samples) {
+    debug_log("Overwriting samples.");
   }
+  memcpy(latest_data, data, num_samples * sizeof(AccelData));
+  latest_samples = num_samples;
 }
 
 static void in_dropped_handler(AppMessageResult reason, void *context)
 {
-  cl_interpret_message_result(reason);
+  //cl_interpret_message_result(reason);
 }
 
 static void send_next_data()
@@ -51,15 +56,12 @@ static void send_next_data()
   DictionaryIterator *iter;
   app_message_outbox_begin(&iter);
 
-  for(int i = 0; i < NUM_SAMPLES; i++)
+  for(int i = 0; i < latest_samples; i++)
   {
-    for(int j = 0; j < 3; j++)
-    {
-      dict_write_int16(iter, (4*i)+j, latest_data[(3*i)+j]);
-    }
-
-    dict_write_uint32(iter, (4*i)+3, latest_timestamps[i]);
+    dict_write_data(iter, i, (const uint8_t *)(&(latest_data[i])), sizeof(AccelData));
   }
+  
+  latest_samples = 0;
 
   app_message_outbox_send();
 }
@@ -68,15 +70,6 @@ static void out_sent_handler(DictionaryIterator *iter, void *context)
 {
   //CAUTION - INFINITE LOOP
   send_next_data();
-
-  // //Show on watch
-  // static char buffs[3][32];
-  // snprintf(buffs[0], sizeof("X: XXXXX"), "X: %d", latest_data[0]);
-  // snprintf(buffs[1], sizeof("Y: YYYYY"), "Y: %d", latest_data[1]);
-  // snprintf(buffs[2], sizeof("Z: ZZZZZ"), "Z: %d", latest_data[2]);
-  // text_layer_set_text(x_layer, buffs[0]);
-  // text_layer_set_text(y_layer, buffs[1]);
-  // text_layer_set_text(z_layer, buffs[2]);
 }
 
 static void process_tuple(Tuple *t)
@@ -86,33 +79,29 @@ static void process_tuple(Tuple *t)
   case KEY_START:
     text_layer_set_text(x_layer, "Connection established.");
     send_next_data();
+    if(!subscribed) {
+      accel_data_service_subscribe(NUM_SAMPLES, (AccelDataHandler)accel_new_data);
+      accel_service_set_sampling_rate(ACCEL_SAMPLING_50HZ);
+      subscribed = 1;
+    }
   break;
   }
 }
 
 static void in_received_handler(DictionaryIterator *iter, void *context)
 {
-  //Get data
   Tuple *t = dict_read_first(iter);
-  if(t)
-  {
-    process_tuple(t);
-  }
 
-  //Get next
   while(t != NULL)
   {
+    process_tuple(t);
     t = dict_read_next(iter);
-    if(t)
-    {
-      process_tuple(t);
-    }
   }
 }
 
 static void out_failed_handler(DictionaryIterator *iter, AppMessageResult result, void *context)
 {
-  cl_interpret_message_result(result);
+  //cl_interpret_message_result(result);
 }
 
 static void init(void)
@@ -123,8 +112,8 @@ static void init(void)
     .unload = window_unload,
   });
 
-  accel_data_service_subscribe(NUM_SAMPLES, (AccelDataHandler)accel_new_data);
-  accel_service_set_sampling_rate(ACCEL_SAMPLING_50HZ);
+  subscribed = 0;
+  latest_samples = 0;
 
   app_comm_set_sniff_interval(SNIFF_INTERVAL_REDUCED);
   app_message_register_inbox_received(in_received_handler);
@@ -134,7 +123,6 @@ static void init(void)
 
   int in_size = app_message_inbox_size_maximum();
   int out_size = app_message_outbox_size_maximum();
-  app_log(APP_LOG_LEVEL_INFO, "C", 0, "I/O Buffer: %d/%d", in_size, out_size);
   app_message_open(in_size, out_size);
 
   window_stack_push(window, true);
@@ -143,7 +131,6 @@ static void init(void)
 static void deinit(void)
 {
   accel_data_service_unsubscribe();
-
   window_destroy(window);
 }
 
