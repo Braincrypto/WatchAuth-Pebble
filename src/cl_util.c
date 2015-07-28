@@ -7,7 +7,7 @@ static bool DEBUG = false;
  */
 void cl_set_debug(bool b)
 {
-	DEBUG = b;
+  DEBUG = b;
 }
 
 /*
@@ -47,12 +47,12 @@ void cl_interpret_message_result(AppMessageResult app_message_error)
   if(app_message_error == APP_MSG_OK)
   {
     cl_applog("APP_MSG_OK");
-  } 
+  }
 
   else if(app_message_error == APP_MSG_SEND_TIMEOUT)
   {
     cl_applog("APP_MSG_SEND_TIMEOUT");
-  } 
+  }
 
   else if(app_message_error == APP_MSG_SEND_REJECTED)
   {
