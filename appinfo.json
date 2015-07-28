@@ -1,0 +1,25 @@
+{
+    "appKeys": {
+        "KEY_START": 0,
+        "KEY_X": 0,
+        "KEY_Y": 1,
+        "KEY_Z": 2
+    },
+    "capabilities": [
+        ""
+    ],
+    "companyName": "SRI International",
+    "longName": "WatchAuth",
+    "projectType": "native",
+    "resources": {
+        "media": []
+    },
+    "sdkVersion": "2",
+    "shortName": "WatchAuth",
+    "uuid": "fad113ca-4433-4469-aba4-d75ebd5dc2dd",
+    "versionCode": 1,
+    "versionLabel": "1.0",
+    "watchapp": {
+        "watchface": false
+    }
+}
