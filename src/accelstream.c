@@ -48,12 +48,14 @@ int queue_push(AccelData *data) {
     queue_size++;
     return 1;
   } else {
+    debug_log("Tried to push onto full queue.\n");
     return 0;
   }
 }
 
 AccelData *queue_pop() {
   if (queue_empty()) {
+    debug_log("Tried to pop from empty queue.\n");
     return NULL;
   } else {
     AccelData *retval = sample_buffer + queue_start;
@@ -68,6 +70,10 @@ static void accel_new_data(AccelData *data, uint32_t num_samples)
 {
   for(int i = 0; i < num_samples && !queue_full(); i++) {
     queue_push(data + i);
+  }
+
+  if(queue_full()) {
+    debug_log("Queue filled.")
   }
 }
 
