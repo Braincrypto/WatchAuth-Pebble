@@ -1,15 +1,17 @@
 #include <pebble.h>
 #include "cl_util.h"
 
-#define KEY_START 0
-
-#define SAMPLE_BUFFER_CAPACITY 50
-#define NUM_SAMPLES 10
+static const int KEY_START = 0;
+static const int SAMPLE_BUFFER_CAPACITY = 50;
+static const int NUM_SAMPLES = 10;
+static const int MAX_SAMPLES_TO_SEND = (app_message_outbox_size_maximum() / sizeof(AccelData)) - 1;
 
 static Window *window;
-static TextLayer *x_layer, *y_layer, *z_layer;
-static AccelData latest_data[NUM_SAMPLES];
-static int latest_samples;
+static TextLayer *x_layer;
+
+static AccelData sample_buffer[SAMPLE_BUFFER_CAPACITY];
+static int queue_start = 0, queue_size = 0;
+
 static int subscribed = 0;
 
 static void debug_log(char *message)
@@ -17,38 +19,56 @@ static void debug_log(char *message)
   APP_LOG(APP_LOG_LEVEL_DEBUG, message); 
 }
 
+// Window management
 static void window_load(Window *window)
 {
   x_layer = cl_text_layer_create(GRect(0, 0, 144, 24), GColorBlack, GColorClear, false, 0, FONT_KEY_GOTHIC_18, GTextAlignmentLeft);
   text_layer_set_text(x_layer, "Waiting for Android...");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(x_layer));
-
-  y_layer = cl_text_layer_create(GRect(0, 24, 144, 24), GColorBlack, GColorClear, false, 0, FONT_KEY_GOTHIC_18, GTextAlignmentLeft);
-  layer_add_child(window_get_root_layer(window), text_layer_get_layer(y_layer));
-
-  z_layer = cl_text_layer_create(GRect(0, 48, 144, 24), GColorBlack, GColorClear, false, 0, FONT_KEY_GOTHIC_18, GTextAlignmentLeft);
-  layer_add_child(window_get_root_layer(window), text_layer_get_layer(z_layer));
 }
 
 static void window_unload(Window *window)
 {
   text_layer_destroy(x_layer);
-  text_layer_destroy(y_layer);
-  text_layer_destroy(z_layer);
 }
 
+// Queue management
+inline int queue_full() {
+  return queue_size >= SAMPLE_BUFFER_CAPACITY - 1;
+}
+
+inline int queue_empty() {
+  return queue_size == 0;
+}
+
+int queue_push(AccelData *data) {
+  if (!queue_full()) {
+    int queue_spot = (queue_start + queue_size) % SAMPLE_BUFFER_CAPACITY;
+    memcpy(sample_buffer + queue_spot, data, sizeof(AccelData));
+    queue_size++;
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+AccelData *queue_pop() {
+  if (queue_empty()) {
+    return NULL;
+  } else {
+    AccelData *retval = sample_buffer + queue_start;
+    queue_size--;
+    queue_start = (queue_start + 1) % SAMPLE_BUFFER_CAPACITY;
+    return retval;
+  }
+}
+
+// Accelerometer data
 static void accel_new_data(AccelData *data, uint32_t num_samples)
 {
-  if(latest_samples) {
-    debug_log("Overwriting samples.");
+  for(int i = 0; i < num_samples && !queue_full(); i++) {
+    queue_push(data + i);
   }
-  memcpy(latest_data, data, num_samples * sizeof(AccelData));
-  latest_samples = num_samples;
-}
-
-static void in_dropped_handler(AppMessageResult reason, void *context)
-{
-  //cl_interpret_message_result(reason);
 }
 
 static void send_next_data()
@@ -56,20 +76,12 @@ static void send_next_data()
   DictionaryIterator *iter;
   app_message_outbox_begin(&iter);
 
-  for(int i = 0; i < latest_samples; i++)
+  for(int i = 0; i < MAX_SAMPLES_TO_SEND && !queue_empty(); i++)
   {
-    dict_write_data(iter, i, (const uint8_t *)(&(latest_data[i])), sizeof(AccelData));
+    dict_write_data(iter, i, (const uint8_t *)queue_pop(), sizeof(AccelData));
   }
-  
-  latest_samples = 0;
 
   app_message_outbox_send();
-}
-
-static void out_sent_handler(DictionaryIterator *iter, void *context)
-{
-  //CAUTION - INFINITE LOOP
-  send_next_data();
 }
 
 static void process_tuple(Tuple *t)
@@ -88,6 +100,7 @@ static void process_tuple(Tuple *t)
   }
 }
 
+// Message service handlers
 static void in_received_handler(DictionaryIterator *iter, void *context)
 {
   Tuple *t = dict_read_first(iter);
@@ -99,9 +112,19 @@ static void in_received_handler(DictionaryIterator *iter, void *context)
   }
 }
 
+static void out_sent_handler(DictionaryIterator *iter, void *context)
+{
+  send_next_data();
+}
+
+static void in_dropped_handler(AppMessageResult reason, void *context)
+{
+  cl_interpret_message_result(reason);
+}
+
 static void out_failed_handler(DictionaryIterator *iter, AppMessageResult result, void *context)
 {
-  //cl_interpret_message_result(result);
+  cl_interpret_message_result(result);
 }
 
 static void init(void)
@@ -113,7 +136,6 @@ static void init(void)
   });
 
   subscribed = 0;
-  latest_samples = 0;
 
   app_comm_set_sniff_interval(SNIFF_INTERVAL_REDUCED);
   app_message_register_inbox_received(in_received_handler);
