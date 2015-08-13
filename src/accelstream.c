@@ -1,10 +1,10 @@
 #include <pebble.h>
 #include "cl_util.h"
 
-static const int KEY_START = 0;
-static const int SAMPLE_BUFFER_CAPACITY = 50;
-static const int NUM_SAMPLES = 10;
-static const int MAX_SAMPLES_TO_SEND = (app_message_outbox_size_maximum() / sizeof(AccelData)) - 1;
+#DEFINE KEY_START 0
+#DEFINE SAMPLE_BUFFER_CAPACITY 50
+#DEFINE NUM_SAMPLES 10
+#DEFINE MAX_SAMPLES_TO_SEND (app_message_outbox_size_maximum() / sizeof(AccelData)) - 1
 
 static Window *window;
 static TextLayer *x_layer;
@@ -33,15 +33,15 @@ static void window_unload(Window *window)
 }
 
 // Queue management
-inline int queue_full() {
+static inline int queue_full() {
   return queue_size >= SAMPLE_BUFFER_CAPACITY - 1;
 }
 
-inline int queue_empty() {
+static inline int queue_empty() {
   return queue_size == 0;
 }
 
-int queue_push(AccelData *data) {
+static int queue_push(AccelData *data) {
   if (!queue_full()) {
     int queue_spot = (queue_start + queue_size) % SAMPLE_BUFFER_CAPACITY;
     memcpy(sample_buffer + queue_spot, data, sizeof(AccelData));
@@ -53,7 +53,7 @@ int queue_push(AccelData *data) {
   }
 }
 
-AccelData *queue_pop() {
+static AccelData *queue_pop() {
   if (queue_empty()) {
     debug_log("Tried to pop from empty queue.\n");
     return NULL;
@@ -68,12 +68,12 @@ AccelData *queue_pop() {
 // Accelerometer data
 static void accel_new_data(AccelData *data, uint32_t num_samples)
 {
-  for(int i = 0; i < num_samples && !queue_full(); i++) {
+  for(unsigned int i = 0; i < num_samples && !queue_full(); i++) {
     queue_push(data + i);
   }
 
   if(queue_full()) {
-    debug_log("Queue filled.")
+    debug_log("Queue filled.");
   }
 }
 
