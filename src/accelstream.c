@@ -1,10 +1,10 @@
 #include <pebble.h>
 #include "cl_util.h"
 
-#DEFINE KEY_START 0
-#DEFINE SAMPLE_BUFFER_CAPACITY 50
-#DEFINE NUM_SAMPLES 10
-#DEFINE MAX_SAMPLES_TO_SEND (app_message_outbox_size_maximum() / sizeof(AccelData)) - 1
+#define KEY_START 0
+#define SAMPLE_BUFFER_CAPACITY 150
+#define NUM_SAMPLES 10
+#define MAX_SAMPLES_TO_SEND 5
 
 static Window *window;
 static TextLayer *x_layer;
@@ -13,11 +13,6 @@ static AccelData sample_buffer[SAMPLE_BUFFER_CAPACITY];
 static int queue_start = 0, queue_size = 0;
 
 static int subscribed = 0;
-
-static void debug_log(char *message)
-{
-  APP_LOG(APP_LOG_LEVEL_DEBUG, message); 
-}
 
 // Window management
 static void window_load(Window *window)
@@ -48,14 +43,12 @@ static int queue_push(AccelData *data) {
     queue_size++;
     return 1;
   } else {
-    debug_log("Tried to push onto full queue.\n");
     return 0;
   }
 }
 
 static AccelData *queue_pop() {
   if (queue_empty()) {
-    debug_log("Tried to pop from empty queue.\n");
     return NULL;
   } else {
     AccelData *retval = sample_buffer + queue_start;
@@ -68,12 +61,12 @@ static AccelData *queue_pop() {
 // Accelerometer data
 static void accel_new_data(AccelData *data, uint32_t num_samples)
 {
-  for(unsigned int i = 0; i < num_samples && !queue_full(); i++) {
+  for(unsigned int i = 0; i < num_samples; i++) {
+    //if(queue_full()) {
+      //APP_LOG(APP_LOG_LEVEL_DEBUG, "Queue filled before all items written. Wrote %d items.\n", i);
+    //}
     queue_push(data + i);
-  }
-
-  if(queue_full()) {
-    debug_log("Queue filled.");
+    
   }
 }
 
@@ -82,11 +75,11 @@ static void send_next_data()
   DictionaryIterator *iter;
   app_message_outbox_begin(&iter);
 
-  for(int i = 0; i < MAX_SAMPLES_TO_SEND && !queue_empty(); i++)
+  for(unsigned int i = 0; i < MAX_SAMPLES_TO_SEND && !queue_empty(); i++)
   {
     dict_write_data(iter, i, (const uint8_t *)queue_pop(), sizeof(AccelData));
   }
-
+  
   app_message_outbox_send();
 }
 
@@ -125,12 +118,15 @@ static void out_sent_handler(DictionaryIterator *iter, void *context)
 
 static void in_dropped_handler(AppMessageResult reason, void *context)
 {
-  cl_interpret_message_result(reason);
+  //cl_interpret_message_result(reason);
 }
 
 static void out_failed_handler(DictionaryIterator *iter, AppMessageResult result, void *context)
 {
-  cl_interpret_message_result(result);
+  //cl_interpret_message_result(result);
+  if(result != APP_MSG_BUSY) {
+    window_stack_pop_all(true);
+  }
 }
 
 static void init(void)
